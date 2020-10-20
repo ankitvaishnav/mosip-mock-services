@@ -1,8 +1,8 @@
 package io.mosip.mock.sdk.test;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosip.kernel.biometrics.constant.BiometricType;
-import io.mosip.kernel.biometrics.constant.Match;
+import io.mosip.kernel.biometrics.constant.*;
 import io.mosip.kernel.biometrics.entities.*;
 import io.mosip.kernel.biometrics.model.Decision;
 import io.mosip.kernel.biometrics.model.MatchDecision;
@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.*;
 
 import static java.lang.Integer.parseInt;
@@ -71,7 +72,6 @@ public class SampleSDKTest {
                 Assert.assertEquals(decisions.get(BiometricType.FINGER).toString(), decisions.get(BiometricType.FINGER).getMatch().toString(), Match.MATCHED.toString());
                 Assert.assertEquals(decisions.get(BiometricType.IRIS).toString(), decisions.get(BiometricType.IRIS).getMatch().toString(), Match.NOT_MATCHED.toString());
             }
-            ObjectMapper objectMapper = new ObjectMapper();
         } catch (ParserConfigurationException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -103,7 +103,6 @@ public class SampleSDKTest {
                 Assert.assertEquals(decisions.get(BiometricType.FINGER).toString(), decisions.get(BiometricType.FINGER).getMatch().toString(), Match.MATCHED.toString());
                 Assert.assertEquals(decisions.get(BiometricType.IRIS).toString(), decisions.get(BiometricType.IRIS).getMatch().toString(), Match.MATCHED.toString());
             }
-            ObjectMapper objectMapper = new ObjectMapper();
         } catch (ParserConfigurationException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -111,6 +110,83 @@ public class SampleSDKTest {
         } catch (SAXException e) {
             e.printStackTrace();
         }
+    }
+
+    @Test
+    public void printBioRecord() throws JsonProcessingException {
+        VersionType v1 = new VersionType(1, 1);
+        VersionType cv = new VersionType(1, 1);
+
+        BIRInfo.BIRInfoBuilder birInfoBuilder = new BIRInfo.BIRInfoBuilder();
+        birInfoBuilder.withCreator("mosip");
+        birInfoBuilder.withIndex("1");
+        birInfoBuilder.withCreationDate(LocalDateTime.now());
+        birInfoBuilder.withIntegrity(false);
+        birInfoBuilder.withNotValidAfter(LocalDateTime.now());
+        birInfoBuilder.withNotValidBefore(LocalDateTime.now());
+        birInfoBuilder.withPayload("mosip".getBytes());
+
+        BIRInfo birInfo = new BIRInfo(birInfoBuilder);
+
+        BiometricRecord bs = new BiometricRecord(v1, cv, birInfo);
+
+        BIR.BIRBuilder birBuilder = new BIR.BIRBuilder();
+        birBuilder.withBdb("mosip.io".getBytes());
+        birBuilder.withVersion(v1);
+        birBuilder.withCbeffversion(cv);
+        birBuilder.withSb("mosip".getBytes());
+        birBuilder.withOther("other", "xx");
+        birBuilder.withSbInfo(new SBInfo(new SBInfo.SBInfoBuilder().setFormatOwner(new RegistryIDType("mosip", "sbbb"))));
+
+        BDBInfo.BDBInfoBuilder bdbInfoBuilder = new BDBInfo.BDBInfoBuilder();
+        bdbInfoBuilder.withSubtype(new ArrayList(){{add("Left IndexFinger");}});
+        bdbInfoBuilder.withType(new ArrayList(){{add("Finger");}});
+        bdbInfoBuilder.withLevel(ProcessedLevelType.RAW);
+        bdbInfoBuilder.withPurpose(PurposeType.ENROLL);
+        bdbInfoBuilder.withIndex("xxxx");
+        bdbInfoBuilder.withFormat(new RegistryIDType("mosip", "7"));
+        QualityType qualityType = new QualityType();
+        qualityType.setAlgorithm(new RegistryIDType("mosip", "SHA-256"));
+        qualityType.setScore(Long.valueOf(12));
+        bdbInfoBuilder.withQuality(qualityType);
+
+        BDBInfo bdbInfo = new BDBInfo(bdbInfoBuilder);
+        birBuilder.withBdbInfo(bdbInfo);
+        BIR bir = new BIR(birBuilder);
+
+        bs.getSegments().add(bir);
+        ObjectMapper objectMapper = new ObjectMapper();
+        String s = objectMapper.writeValueAsString(bs);
+        System.out.println(s);
+    }
+
+    @Test
+    public void print_match_descision() throws JsonProcessingException {
+        MatchDecision[] ls = new MatchDecision[2];
+        MatchDecision md = new MatchDecision(0);
+        md.setAnalyticsInfo(new HashMap<String, String>(){{put("analytics1", "xxxxx");}});
+
+        Decision d1 = new Decision();
+        d1.setMatch(Match.MATCHED);
+        d1.setAnalyticsInfo(new HashMap<String, String>(){{put("analyticsx", "xxxxx");}});
+
+        Decision d2 = new Decision();
+        d2.setMatch(Match.MATCHED);
+        d2.setAnalyticsInfo(new HashMap<String, String>(){{put("analyticsx", "xxxxx");}});
+
+        md.getDecisions().put(BiometricType.FINGER, d1);
+        md.getDecisions().put(BiometricType.IRIS, d2);
+
+        MatchDecision ms = new MatchDecision(1);
+
+        ms.getDecisions().put(BiometricType.FINGER, d1);
+        ms.getDecisions().put(BiometricType.IRIS, d2);
+
+        ls[0] = md;
+        ls[1] = ms;
+        ObjectMapper objectMapper = new ObjectMapper();
+        String s = objectMapper.writeValueAsString(ls);
+        System.out.println(s);
     }
 
     private BiometricRecord xmlFileToBiometricRecord(String path) throws ParserConfigurationException, IOException, SAXException {

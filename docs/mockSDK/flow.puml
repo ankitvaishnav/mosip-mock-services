@@ -1,21 +1,35 @@
 @startuml
 title Proxy SDK
 
-(*) --> "CA calls authentication"
-If "Offline" then
---> [true] "s"
+(*) --> "CA calls for **status check**.\nCA fetches **T1** from SDK"
+note left
+**CA** - Client Application
+**Stored SDK token** - token saved
+by CA in local database
+**T1** - Token stored in SDK
+end note
+If "System is online" then
+--> [true] "Validate the token {**T1**} with server (keycloak)"
+    If "Validation success" then
+    --> [true] "Token verified, match request can\nbe sent now"
+    else
+    --> [false] "CA calls for **Initialization**"
+    endif
 else
---> [false] "df"
+--> [false] "Validate the token {**T1**} with **stored SDK token**"
 
-
---> "User gets redirected to dashboard page"
---> "Webapp show popup to allow notifications"
-If "user accepts" then
-    --> [true] "Generate a firebase token and share it with server"
-    --> "User logs out"
+If "Validation success" then
+--> [true] "Token verified, match request can\nbe sent now"
 else
-    --> [false] "Send a request to server that user disabled notifications"
-    --> "User logs out"
-    --> "Send firebase token with the logout request (for removal of token)"
+--> [false] "CA calls for **Initialization**"
+endif
+
+If "System is online" then
+--> [true] "Token created, match request can\nbe sent now"
+else
+--> [false] "Show alert to user **''system should be online for Initialization''**"
+endif
+
+endif
 
 @enduml

@@ -9,7 +9,7 @@ end box
 
 participant "Proxy SDK" as SDK
 
-== Authentication ==
+== Initialization ==
 CA -> SDK: Initialize
 activate SDK
 SDK -> MS: Acquire token using clientid and secret key
@@ -24,7 +24,15 @@ else if Validation fails
 CA <- CA: do nothing
 end
 
-== Requests ==
+== Status check ==
+CA -> SDK: Fetch token {**T1**}
+activate SDK
+return token {**T1**}
+alt if system is online
+CA <- CA: Validate the token {**T1**} with server
+else if system is offline
+CA <- CA: Validate the token {**T1**} with **stored SDK token**
+end
 
 == Requests ==
 CA -> SDK: Match biometrics B1 with a given gallery
