@@ -1,0 +1,40 @@
+@startuml
+title Proxy SDK
+autonumber
+
+box "MOSIP" #LightBlue
+participant "MOSIP server" as MS
+participant "Client application" as CA
+end box
+
+participant "Proxy SDK" as SDK
+
+== Authentication ==
+CA -> SDK: Initialize
+activate SDK
+SDK -> MS: Acquire token using clientid and secret key
+activate MS
+return Token {**T1**}
+return Token {**T1**}
+
+CA -> MS: Validate token with server
+alt if Validation is successful
+CA <- CA: Save the token in encrypted db (say **stored SDK token**) for offline validation
+else if Validation fails
+CA <- CA: do nothing
+end
+
+== Requests ==
+
+== Requests ==
+CA -> SDK: Match biometrics B1 with a given gallery
+activate SDK
+return **headers**: Token {**T1**}\n**body**: match response
+
+alt if stored SDK token is equal to {**T1**}
+CA <- CA: Accept the result and proceed further
+else if Validation fails
+CA <- CA: Throw SDK validation error
+end
+
+@enduml

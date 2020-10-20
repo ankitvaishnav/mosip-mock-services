@@ -1,0 +1,21 @@
+@startuml
+title Proxy SDK
+
+(*) --> "CA calls authentication"
+If "Offline" then
+--> [true] "s"
+else
+--> [false] "df"
+
+
+--> "User gets redirected to dashboard page"
+--> "Webapp show popup to allow notifications"
+If "user accepts" then
+    --> [true] "Generate a firebase token and share it with server"
+    --> "User logs out"
+else
+    --> [false] "Send a request to server that user disabled notifications"
+    --> "User logs out"
+    --> "Send firebase token with the logout request (for removal of token)"
+
+@enduml
