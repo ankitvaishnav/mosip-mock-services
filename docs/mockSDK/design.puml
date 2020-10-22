@@ -7,41 +7,47 @@ participant "MOSIP server" as MS
 participant "Client application" as CA
 end box
 
-participant "Proxy SDK" as SDK
+box "MOSIP" #LightBlue
+participant "Proxy SDK Methods" as SDK
+participant "Proxy SDK Services" as SDKS
+end box
 
 == Initialization ==
-CA -> SDK: Initialize
+CA -> SDK: Init
 activate SDK
-SDK -> MS: Acquire token using clientid and secret key
+
+SDK -> SDKS: Initialization API
+activate SDKS
+
+SDKS -> MS: Acquire token using clientid and secret key
 activate MS
-return Token {**T1**}
-return Token {**T1**}
+return **headers**: Token {**T1**}
 
-CA -> MS: Validate token with server
-alt if Validation is successful
-CA <- CA: Save the token in encrypted db (say **stored SDK token**) for offline validation
-else if Validation fails
-CA <- CA: do nothing
-end
+return **headers**: Token {**T1**}\n**body**: API response {success/failure}
 
-== Status check ==
-CA -> SDK: Fetch token {**T1**}
-activate SDK
-return token {**T1**}
-alt if system is online
-CA <- CA: Validate the token {**T1**} with server
-else if system is offline
-CA <- CA: Validate the token {**T1**} with **stored SDK token**
-end
+return Response {success/failure} & **T1**
 
-== Requests ==
+CA -> MS: Validate token **T1** with server
+CA -> CA: Validation {success/failure}
+'alt if Validation is successful
+'CA <- CA: Save the token in encrypted db (say **stored SDK token**) for offline validation
+'else if Validation fails
+'CA <- CA: do nothing
+'end
+
+== Match Request ==
 CA -> SDK: Match biometrics B1 with a given gallery
 activate SDK
+
+SDK -> SDKS: Match API {signature will be same a match\nmethods but as json string}
+activate SDKS
 return **headers**: Token {**T1**}\n**body**: match response
 
-alt if stored SDK token is equal to {**T1**}
+return **headers**: Token {**T1**}\n**body**: API response {Match decision}
+
+alt if Token {**T1**} validated successful
 CA <- CA: Accept the result and proceed further
-else if Validation fails
+else if Token {**T1**} validation fails
 CA <- CA: Throw SDK validation error
 end
 
