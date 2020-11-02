@@ -4,9 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosip.kernel.biometrics.constant.BiometricType;
 import io.mosip.kernel.biometrics.constant.Match;
 import io.mosip.kernel.biometrics.entities.*;
-import io.mosip.kernel.biometrics.model.Decision;
-import io.mosip.kernel.biometrics.model.MatchDecision;
-import io.mosip.kernel.biometrics.model.Response;
+import io.mosip.kernel.biometrics.model.*;
 import io.mosip.mock.sdk.impl.SampleSDK;
 import io.mosip.mock.sdk.utils.Util;
 import org.junit.Assert;
@@ -65,13 +63,13 @@ public class SampleSDKTest {
 
             SampleSDK sampleSDK = new SampleSDK();
             Response<MatchDecision[]> response = sampleSDK.match(sample_record, gallery, modalitiesToMatch, new HashMap<>());
-            for (int i=0; i< response.getResponse().length; i++){
+            MatchDecision[] matchDecisions = response.getResponse();
+            for (int i=0; i< matchDecisions.length; i++){
                 Map<BiometricType, Decision> decisions = response.getResponse()[i].getDecisions();
                 Assert.assertEquals(decisions.get(BiometricType.FACE).toString(), decisions.get(BiometricType.FACE).getMatch().toString(), Match.MATCHED.toString());
                 Assert.assertEquals(decisions.get(BiometricType.FINGER).toString(), decisions.get(BiometricType.FINGER).getMatch().toString(), Match.MATCHED.toString());
                 Assert.assertEquals(decisions.get(BiometricType.IRIS).toString(), decisions.get(BiometricType.IRIS).getMatch().toString(), Match.NOT_MATCHED.toString());
             }
-            ObjectMapper objectMapper = new ObjectMapper();
         } catch (ParserConfigurationException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -97,13 +95,93 @@ public class SampleSDKTest {
 
             SampleSDK sampleSDK = new SampleSDK();
             Response<MatchDecision[]> response = sampleSDK.match(sample_record, gallery, modalitiesToMatch, new HashMap<>());
-            for (int i=0; i< response.getResponse().length; i++){
-                Map<BiometricType, Decision> decisions = response.getResponse()[i].getDecisions();
-                Assert.assertEquals(decisions.get(BiometricType.FACE).toString(), decisions.get(BiometricType.FACE).getMatch().toString(), Match.NOT_MATCHED.toString());
-                Assert.assertEquals(decisions.get(BiometricType.FINGER).toString(), decisions.get(BiometricType.FINGER).getMatch().toString(), Match.MATCHED.toString());
-                Assert.assertEquals(decisions.get(BiometricType.IRIS).toString(), decisions.get(BiometricType.IRIS).getMatch().toString(), Match.MATCHED.toString());
-            }
-            ObjectMapper objectMapper = new ObjectMapper();
+        } catch (ParserConfigurationException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (SAXException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void check_quality() {
+        try {
+            List<BiometricType> modalitiesToCheck = new ArrayList<BiometricType>(){{
+                add(BiometricType.FACE);
+                add(BiometricType.FINGER);
+                add(BiometricType.IRIS);
+            }};
+            BiometricRecord sample_record = xmlFileToBiometricRecord(samplePath);
+            SampleSDK sampleSDK = new SampleSDK();
+            Response<QualityCheck> response = sampleSDK.checkQuality(sample_record, modalitiesToCheck, new HashMap<>());
+        } catch (ParserConfigurationException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (SAXException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void extract_tempalte() {
+        try {
+            List<BiometricType> modalitiesToExtract = new ArrayList<BiometricType>(){{
+                add(BiometricType.FACE);
+                add(BiometricType.FINGER);
+                add(BiometricType.IRIS);
+            }};
+            BiometricRecord sample_record = xmlFileToBiometricRecord(samplePath);
+            SampleSDK sampleSDK = new SampleSDK();
+            Response<BiometricRecord> response = sampleSDK.extractTemplate(sample_record, modalitiesToExtract, new HashMap<>());
+        } catch (ParserConfigurationException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (SAXException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void init() {
+        Map<String, String> initParams = new HashMap<>();
+        SampleSDK sampleSDK = new SampleSDK();
+        SDKInfo response = sampleSDK.init(initParams);
+    }
+
+    @Test
+    public void segment() {
+        try {
+            List<BiometricType> modalitiesToSegment = new ArrayList<BiometricType>(){{
+                add(BiometricType.FACE);
+                add(BiometricType.FINGER);
+                add(BiometricType.IRIS);
+            }};
+            BiometricRecord sample_record = xmlFileToBiometricRecord(samplePath);
+            SampleSDK sampleSDK = new SampleSDK();
+            Response<BiometricRecord> response = sampleSDK.segment(sample_record, modalitiesToSegment, new HashMap<>());
+        } catch (ParserConfigurationException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (SAXException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void convert_format() {
+        try {
+            List<BiometricType> modalitiesToConvert = new ArrayList<BiometricType>(){{
+                add(BiometricType.FACE);
+                add(BiometricType.FINGER);
+                add(BiometricType.IRIS);
+            }};
+            BiometricRecord sample_record = xmlFileToBiometricRecord(samplePath);
+            SampleSDK sampleSDK = new SampleSDK();
+            BiometricRecord response = sampleSDK.convertFormat(sample_record, "", "", new HashMap<>(), new HashMap<>(), modalitiesToConvert);
         } catch (ParserConfigurationException e) {
             e.printStackTrace();
         } catch (IOException e) {

@@ -60,7 +60,7 @@
 
 	<properties>
 	
-	<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
 		<!-- maven -->
 		<maven.compiler.source>1.8</maven.compiler.source>
@@ -74,14 +74,22 @@
 		<maven.javadoc.version>3.0.1</maven.javadoc.version>
 		<maven-shade-plugin.version>2.3</maven-shade-plugin.version>
 		
-		<kernel.biometricsdk.version>0.9</kernel.biometricsdk.version>
+		<kernel.biometricsdk.version>1.1.2</kernel.biometricsdk.version>
 		<maven.jar.plugin.version>3.0.2</maven.jar.plugin.version>
-		<spring.boot.version>2.0.2.RELEASE</spring.boot.version>
         <lombok.version>1.18.8</lombok.version>
+
+        <!-- Core -->
+        <springframework.version>5.1.9.RELEASE</springframework.version>
+        <spring.boot.version>2.0.2.RELEASE</spring.boot.version>
 
 	</properties>
 	
 	<dependencies>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>${springframework.version}</version>
+        </dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter</artifactId>
@@ -97,6 +105,11 @@
 			<artifactId>kernel-biometrics-api</artifactId>
 			<version>${kernel.biometricsdk.version}</version>
 		</dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>${springframework.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -132,6 +145,12 @@
             <groupId>org.slf4j</groupId>
             <artifactId>jcl-over-slf4j</artifactId>
             <version>1.7.25</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>4.5.6</version>
         </dependency>
 
     </dependencies>
