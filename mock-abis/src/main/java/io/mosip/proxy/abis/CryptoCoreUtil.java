@@ -207,10 +207,11 @@ public class CryptoCoreUtil {
 	private byte[] decryptCbeffData(SecretKey key, byte[] data) throws Exception {
 		try {
 			Cipher cipher = Cipher.getInstance("AES/GCM/PKCS5Padding");
-			byte[] randomIV = Arrays.copyOfRange(data, data.length - cipher.getBlockSize(), data.length);
+			byte[] randomIV = Arrays.copyOfRange(data, 0, 32);
+//			byte[] randomIV = Arrays.copyOfRange(data, data.length - cipher.getBlockSize(), data.length);
 			GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(128, randomIV);
 			cipher.init(Cipher.DECRYPT_MODE, key, gcmParameterSpec);
-			return cipher.doFinal(Arrays.copyOf(data, data.length - cipher.getBlockSize()));
+			return cipher.doFinal(Arrays.copyOfRange(data, 32, data.length));
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw e;

@@ -133,6 +133,31 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 
 	}
 
+	public String fetchCBEFF(String url) throws Exception {
+		List<BiometricData> lst = new ArrayList();
+		String cbf = "";
+		try {
+			logger.info("Fetching CBEFF for reference URL-" + url);
+			HttpHeaders headers1 = new HttpHeaders();
+
+			headers1.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+
+			HttpEntity<String> entity1 = new HttpEntity<String>(headers1);
+			String cbeff = restTemplate.exchange(url, HttpMethod.GET, entity1, String.class).getBody();
+
+			cbf=cryptoUtil.decryptCbeff(cbeff);
+
+		} catch (CbeffException ex) {
+			logger.error("issue with cbeff " + ex.getMessage());
+			throw ex;
+		} catch (Exception ex) {
+			logger.error("Issue while getting ,validating and inserting Cbeff" + ex.getMessage());
+			ex.printStackTrace();
+			throw ex;
+		}
+		return cbf;
+	}
+
 	private List<BiometricData> fetchCBEFF(InsertEntity ie) throws Exception {
 		List<BiometricData> lst = new ArrayList();
 		try {

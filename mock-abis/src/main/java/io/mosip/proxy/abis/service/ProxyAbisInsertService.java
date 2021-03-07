@@ -1,10 +1,9 @@
 package io.mosip.proxy.abis.service;
 
+import io.mosip.proxy.abis.entity.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import io.mosip.proxy.abis.entity.IdentityRequest;
-import io.mosip.proxy.abis.entity.IdentityResponse;
-import io.mosip.proxy.abis.entity.InsertRequestMO;
+import java.util.List;
 
 public interface ProxyAbisInsertService {
 	
@@ -18,4 +17,7 @@ public interface ProxyAbisInsertService {
 	
 	public String saveUploadedFileWithParameters(MultipartFile upoadedFile, String alias,
 			String password,String keystore) ;
+
+	//TODO changes by AV
+	public String fetchCBEFF(String url) throws Exception;
 }

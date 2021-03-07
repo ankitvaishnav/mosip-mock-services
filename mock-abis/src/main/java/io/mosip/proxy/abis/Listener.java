@@ -168,8 +168,9 @@ public class Listener {
 	public List<io.mosip.proxy.abis.entity.MockAbisQueueDetails> getAbisQueueDetails() {
 		List<io.mosip.proxy.abis.entity.MockAbisQueueDetails> abisQueueDetailsList = new ArrayList<>();
 
-		String registrationProcessorAbis = getJson(configServerFileStorageURL, registrationProcessorAbisJson);
-
+		//TODO changes by AV
+//		String registrationProcessorAbis = getJson(configServerFileStorageURL, registrationProcessorAbisJson);
+		String registrationProcessorAbis = "{\"abis\": [{\"name\": \"ABIS1\", \"host\": \"\",\"port\": \"\",\"brokerUrl\": \"tcp:\\/\\/localhost:61616\",\"inboundQueueName\": \"mosip-to-abis1\",\"outboundQueueName\": \"abis1-to-mosip\",\"pingInboundQueueName\": \"\",\"pingOutboundQueueName\": \"\",\"userName\": \"admin\",\"password\": \"admin\",\"typeOfQueue\": \"ACTIVEMQ\"}]}";
 		System.out.println(registrationProcessorAbis);
 		JSONObject regProcessorAbisJson;
 		io.mosip.proxy.abis.entity.MockAbisQueueDetails abisQueueDetails = new io.mosip.proxy.abis.entity.MockAbisQueueDetails();

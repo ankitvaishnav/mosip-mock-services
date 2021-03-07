@@ -5,9 +5,11 @@ import java.io.FileWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
 import javax.validation.Valid;
 
+import io.mosip.proxy.abis.entity.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,12 +24,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import io.mosip.proxy.abis.entity.FailureResponse;
-import io.mosip.proxy.abis.entity.IdentityRequest;
-import io.mosip.proxy.abis.entity.IdentityResponse;
-import io.mosip.proxy.abis.entity.InsertRequestMO;
-import io.mosip.proxy.abis.entity.RequestMO;
-import io.mosip.proxy.abis.entity.ResponseMO;
 import io.mosip.proxy.abis.exception.BindingException;
 import io.mosip.proxy.abis.exception.FailureReasonsConstants;
 import io.mosip.proxy.abis.exception.RequestException;
@@ -46,6 +42,16 @@ public class ProxyAbisController {
 
 	@Autowired
 	ProxyAbisInsertService abisInsertService;
+
+	@RequestMapping(value = "fetchCBEFF", method = RequestMethod.POST)
+	@ApiOperation(value = "fetchCBEFF")
+	public ResponseEntity<String> fetchCBEFF(@RequestParam("url") String url)
+			throws Exception {
+		logger.info("fetchCBEFF Request: "+url);
+		String ls =  abisInsertService.fetchCBEFF(url);
+		return new ResponseEntity<String>(ls ,HttpStatus.OK);
+
+	}
 
 	
 	@RequestMapping(value = "insertrequest", method = RequestMethod.POST)
