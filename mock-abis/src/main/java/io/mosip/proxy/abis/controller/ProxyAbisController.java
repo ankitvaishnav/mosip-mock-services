@@ -44,6 +44,7 @@ public class ProxyAbisController {
 	@Autowired
 	ProxyAbisInsertService abisInsertService;
 
+
 	@RequestMapping(value = "hash", method = RequestMethod.GET)
 	@ApiOperation(value = "Get saved biometric hashes Request")
 	public ResponseEntity<Object> getHashes()
