@@ -180,6 +180,7 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 				headers1.set("Cookie", "AUTHORIZATION" + responseHeader.get("Set-Cookie").get(0).toString().substring(0,
 						responseHeader.get("Set-Cookie").get(0).toString().indexOf(";")));
 			}
+			CBEFF_URL = CBEFF_URL.replace("http://datashare-service", "https://sandbox.mosip.net");
 
 			logger.info("Fetching CBEFF for reference URL-" + CBEFF_URL);
 			HttpEntity<String> entity1 = new HttpEntity<String>(headers1);

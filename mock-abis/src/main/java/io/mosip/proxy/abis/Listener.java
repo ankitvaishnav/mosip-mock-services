@@ -172,7 +172,23 @@ public class Listener {
 	public List<io.mosip.proxy.abis.entity.MockAbisQueueDetails> getAbisQueueDetails() {
 		List<io.mosip.proxy.abis.entity.MockAbisQueueDetails> abisQueueDetailsList = new ArrayList<>();
 
-		String registrationProcessorAbis = getJson(configServerFileStorageURL, registrationProcessorAbisJson);
+//		String registrationProcessorAbis = getJson(configServerFileStorageURL, registrationProcessorAbisJson);
+		String registrationProcessorAbis = "{\n" +
+				"    \"abis\": [{\n" +
+				"        \"name\": \"ABIS1\",\n" +
+				"        \"host\": \"\",\n" +
+				"        \"port\": \"\",\n" +
+				"        \"brokerUrl\": \"tcp://sandbox.mosip.net:30616\",\n" +
+				"        \"inboundQueueName\": \"mosip-to-abis1\",\n" +
+				"        \"outboundQueueName\": \"abis1-to-mosip\",\n" +
+				"        \"pingInboundQueueName\": \"\",\n" +
+				"        \"pingOutboundQueueName\": \"\",\n" +
+				"        \"userName\": \"admin\",\n" +
+				"        \"password\": \"admin\",\n" +
+				"        \"typeOfQueue\": \"ACTIVEMQ\",\n" +
+				"        \"inboundMessageTTL\": 2700\n" +
+				"    }]\n" +
+				"}";
 		
 		logger.info(registrationProcessorAbis);
 		JSONObject regProcessorAbisJson;
