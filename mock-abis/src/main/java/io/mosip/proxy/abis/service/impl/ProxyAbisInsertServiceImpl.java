@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -25,6 +26,7 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
 import io.mosip.kernel.core.exception.ExceptionUtils;
+import io.mosip.proxy.abis.Listener;
 import org.apache.commons.io.IOUtils;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
@@ -98,6 +100,9 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
     @Autowired
     private ExpectationCache expectationCache;
 
+    @Autowired
+	private Listener listener;
+
 	private static String CBEFF_URL = null;
 	
 	@Value("${secret_url}")
@@ -115,37 +120,40 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 	@Value("${abis.bio.encryption:true}")
 	private boolean encryption;
 
+	/**
+	 * This flag is added for development & debugging locally registration-processor-abis-sample.json
+	 * If true then registration-processor-abis-sample.json will be picked from resources
+	 */
+	@Value("${local.development:false}")
+	private boolean localDevelopment;
+
+	/**
+	 * Mosip host
+	 */
+	@Value("${mosip_host}")
+	private String mosipHost;
+
 	@Override
 	public void insertData(InsertRequestMO ire) {
 		System.out.println(SECRET_URL);
-		try {
-			java.util.Optional<InsertEntity> op = proxyabis.findById(ire.getReferenceId());
-			if (!op.isEmpty()) {
-				logger.error("Reference Id already exists " + ire.getReferenceId());
-				RequestMO re = new RequestMO(ire.getId(), ire.getVersion(), ire.getRequestId(), ire.getRequesttime(),
-						ire.getReferenceId());
-				throw new RequestException(re, FailureReasonsConstants.REFERENCEID_ALREADY_EXISTS);
-			}
-			CBEFF_URL = ire.getReferenceURL();
-			InsertEntity ie = new InsertEntity(ire.getId(), ire.getVersion(), ire.getRequestId(), ire.getRequesttime(),
+		java.util.Optional<InsertEntity> op = proxyabis.findById(ire.getReferenceId());
+		if (!op.isEmpty()) {
+			logger.error("Reference Id already exists " + ire.getReferenceId());
+			RequestMO re = new RequestMO(ire.getId(), ire.getVersion(), ire.getRequestId(), ire.getRequesttime(),
 					ire.getReferenceId());
-			List<BiometricData> lst = fetchCBEFF(ie);
-			if (null == lst || lst.size() == 0)
-				throw new RequestException(FailureReasonsConstants.INVALID_CBEFF_FORMAT);
-			ie.setBiometricList(lst);
-			proxyabis.save(ie);
-
-		} catch (CbeffException cbef) {
-			logger.error("CBEF error While inserting data " + cbef.getMessage());
-			throw new RequestException(cbef.getMessage());
-		} catch (Exception exp) {
-			logger.error("Error While inserting data " + exp.getMessage());
-			throw new RequestException(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
+			throw new RequestException(re, FailureReasonsConstants.REFERENCEID_ALREADY_EXISTS);
 		}
-
+		CBEFF_URL = ire.getReferenceURL();
+		InsertEntity ie = new InsertEntity(ire.getId(), ire.getVersion(), ire.getRequestId(), ire.getRequesttime(),
+				ire.getReferenceId());
+		List<BiometricData> lst = fetchCBEFF(ie);
+		if (null == lst || lst.size() == 0)
+			throw new RequestException(FailureReasonsConstants.INVALID_CBEFF_FORMAT);
+		ie.setBiometricList(lst);
+		proxyabis.save(ie);
 	}
 
-	private List<BiometricData> fetchCBEFF(InsertEntity ie) throws Exception {
+	private List<BiometricData> fetchCBEFF(InsertEntity ie) {
 		List<BiometricData> lst = new ArrayList();
 		try {
 			HttpHeaders headers1 = new HttpHeaders();
@@ -181,6 +189,11 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 						responseHeader.get("Set-Cookie").get(0).toString().indexOf(";")));
 			}
 
+			if (localDevelopment){
+				/* It will replace the host in referenceUrl with the mosip host */
+				CBEFF_URL = CBEFF_URL.replace("http://datashare-service", mosipHost);
+			}
+
 			logger.info("Fetching CBEFF for reference URL-" + CBEFF_URL);
 			HttpEntity<String> entity1 = new HttpEntity<String>(headers1);
 			String cbeff = restTemplate.exchange(CBEFF_URL, HttpMethod.GET, entity1, String.class).getBody();
@@ -200,7 +213,6 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 			logger.info("Inserting biometric details to concerned table");
 
 			for (BIRType type : birType.getBIR()) {
-
 				BiometricData bd = new BiometricData();
 				bd.setType(type.getBDBInfo().getType().iterator().next().value());
 				if (type.getBDBInfo().getSubtype() != null && type.getBDBInfo().getSubtype().size() >0)
@@ -208,19 +220,29 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 				bd.setBioData(getSHA(new String(type.getBDB())));
 				bd.setInsertEntity(ie);
 				Expectation exp = expectationCache.get(bd.getBioData());
-				if (exp.getId() != null && !exp.getId().isEmpty() && exp.getActionToInterfere().equals("Insert") && exp.getForcedResponse().equals("Error")){
-					throw new RequestException(FailureReasonsConstants.UNEXPECTED_ERROR);
+				if(exp.getId() != null && !exp.getId().isEmpty()){
+					int delayResponse = 0;
+					if(exp.getDelayInExecution() != null && !exp.getDelayInExecution().isEmpty()){
+						delayResponse = Integer.parseInt(exp.getDelayInExecution());
+					}
+					TimeUnit.SECONDS.sleep(delayResponse);
+
+					if(exp.getActionToInterfere().equals("Insert") && exp.getForcedResponse().equals("Error")){
+						throw new RequestException(FailureReasonsConstants.UNEXPECTED_ERROR);
+					}
 				}
 				lst.add(bd);
 			}
 
 		} catch (CbeffException ex) {
 			logger.error("issue with cbeff " + ex.getMessage());
+			throw new RequestException(FailureReasonsConstants.INVALID_CBEFF_FORMAT);
+		} catch (RequestException ex) {
 			throw ex;
 		} catch (Exception ex) {
 			logger.error("Issue while getting ,validating and inserting Cbeff" + ex.getMessage());
 			ex.printStackTrace();
-			throw ex;
+			throw new RequestException(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
 		}
 		return lst;
 	}
@@ -260,39 +282,41 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 
 	@Override
     public IdentityResponse findDuplication(IdentityRequest ir) {
-		try {
-			String refId = ir.getReferenceId();
-            logger.info("Checking for duplication of reference ID " + refId);
-			List<BiometricData> lst = null;
-			if (null != ir.getGallery() && ir.getGallery().getReferenceIds().size() > 0
-					&& null != ir.getGallery().getReferenceIds().get(0).getReferenceId()
-					&& !ir.getGallery().getReferenceIds().get(0).getReferenceId().isEmpty()) {
-				List<String> referenceIds = new ArrayList();
-				ir.getGallery().getReferenceIds().stream().forEach(ref -> referenceIds.add(ref.getReferenceId()));
-				logger.info("checking for duplication of reference Id against" + referenceIds.toString());
-				lst = proxyAbisBioDataRepository.fetchDuplicatesForReferenceIdBasedOnGalleryIds(refId, referenceIds);
-			} else {
-				logger.info("checking for duplication in entire DB of reference ID" + refId);
-                List<String> bioValue = proxyAbisBioDataRepository.fetchBiodata(refId);
-                if(!bioValue.isEmpty()){
-                    Expectation exp = expectationCache.get(bioValue.get(0));
-                    if(exp.getId() != null && !exp.getId().isEmpty() && exp.getActionToInterfere().equals("Identify")){
-                        return processExpectation(ir, exp);
-                    }
-                }
-				if (findDuplicate) {
-					lst = proxyAbisBioDataRepository.fetchDuplicatesForReferenceId(refId);
+		String refId = ir.getReferenceId();
+		logger.info("Checking for duplication of reference ID " + refId);
+		List<BiometricData> lst = null;
+		if (null != ir.getGallery() && ir.getGallery().getReferenceIds().size() > 0
+				&& null != ir.getGallery().getReferenceIds().get(0).getReferenceId()
+				&& !ir.getGallery().getReferenceIds().get(0).getReferenceId().isEmpty()) {
+			List<String> referenceIds = new ArrayList();
+			ir.getGallery().getReferenceIds().stream().forEach(ref -> referenceIds.add(ref.getReferenceId()));
+			logger.info("checking for duplication of reference Id against" + referenceIds.toString());
+			lst = proxyAbisBioDataRepository.fetchDuplicatesForReferenceIdBasedOnGalleryIds(refId, referenceIds);
+		} else {
+			logger.info("checking for duplication in entire DB of reference ID" + refId);
+			List<String> bioValue = proxyAbisBioDataRepository.fetchBiodata(refId);
+			if(!bioValue.isEmpty()){
+				Expectation exp = expectationCache.get(bioValue.get(0));
+				if(exp.getId() != null && !exp.getId().isEmpty()){
+					int delayResponse = 0;
+					if(exp.getDelayInExecution() != null && !exp.getDelayInExecution().isEmpty()){
+						delayResponse = Integer.parseInt(exp.getDelayInExecution());
+					}
+//					TimeUnit.SECONDS.sleep(delayResponse);
+
+					if(exp.getActionToInterfere().equals("Identify")){
+						return processExpectation(ir, exp);
+					}
 				}
-				
 			}
-			if(lst != null)
-				logger.info("Number of dulplicate candidates are " + lst.size());
-			return constructIdentityResponse(ir, lst);
-		} catch (Exception ex) {
-			throw ex;
+			if (findDuplicate) {
+				lst = proxyAbisBioDataRepository.fetchDuplicatesForReferenceId(refId);
+			}
 
 		}
-
+		if(lst != null)
+			logger.info("Number of dulplicate candidates are " + lst.size());
+		return constructIdentityResponse(ir, lst);
 	}
 
 	/**
@@ -443,6 +467,4 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 	public void deleteExpectation(String id){
     	expectationCache.delete(id);
 	}
-
-
 }
