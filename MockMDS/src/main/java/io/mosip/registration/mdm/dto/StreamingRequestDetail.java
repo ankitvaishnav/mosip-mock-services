@@ -9,5 +9,5 @@ public class StreamingRequestDetail{
 
 	public String deviceId;
 	public String deviceSubId;
-	public int timeout;
+	public String timeout;
 }
