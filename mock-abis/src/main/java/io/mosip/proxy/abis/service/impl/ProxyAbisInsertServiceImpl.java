@@ -2,16 +2,29 @@ package io.mosip.proxy.abis.service.impl;
 
 import java.io.File;
 import java.io.FileWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 
 import io.mosip.kernel.core.exception.ExceptionUtils;
-import io.mosip.proxy.abis.entity.*;
 import org.apache.commons.io.IOUtils;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
@@ -25,10 +38,16 @@ import org.springframework.core.env.Environment;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
 import io.mosip.kernel.core.cbeffutil.common.CbeffValidator;
 import io.mosip.kernel.core.cbeffutil.exception.CbeffException;
@@ -36,10 +55,15 @@ import io.mosip.kernel.core.cbeffutil.jaxbclasses.BIRType;
 import io.mosip.proxy.abis.CryptoCoreUtil;
 import io.mosip.proxy.abis.dao.ProxyAbisBioDataRepository;
 import io.mosip.proxy.abis.dao.ProxyAbisInsertRepository;
+import io.mosip.proxy.abis.entity.BiometricData;
+import io.mosip.proxy.abis.entity.IdentityRequest;
+import io.mosip.proxy.abis.entity.IdentityResponse;
+import io.mosip.proxy.abis.entity.InsertEntity;
+import io.mosip.proxy.abis.entity.InsertRequestMO;
+import io.mosip.proxy.abis.entity.RequestMO;
 import io.mosip.proxy.abis.entity.IdentityResponse.Modalities;
 import io.mosip.proxy.abis.exception.FailureReasonsConstants;
 import io.mosip.proxy.abis.exception.RequestException;
-import io.mosip.proxy.abis.service.ExpectationCache;
 import io.mosip.proxy.abis.service.ProxyAbisInsertService;
 
 @Service
@@ -68,9 +92,6 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 	@Autowired
     private Environment env;
 
-    @Autowired
-    private ExpectationCache expectationCache;
-
 	private static String CBEFF_URL = null;
 	
 	@Value("${secret_url}")
@@ -82,29 +103,11 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 	@Value("${abis.return.duplicate:true}")
 	private boolean findDuplicate;
 
-    /**
-     * This flag is added for fast-tracking core ABIS functionality testing without depending on working environment
-     */
-	@Value("${abis.bio.encryption:true}")
-	private boolean encryption;
-
-	/**
-	 * This flag is added for development & debugging locally registration-processor-abis-sample.json
-	 * If true then registration-processor-abis-sample.json will be picked from resources
-	 */
-	@Value("${local.development:false}")
-	private boolean localDevelopment;
-
-	/**
-	 * Mosip host
-	 */
-	@Value("${mosip_host:#{null}}")
-	private String mosipHost;
+	public static List hashes;
 
 	@Override
-	public int insertData(InsertRequestMO ire) {
+	public void insertData(InsertRequestMO ire) {
 		System.out.println(SECRET_URL);
-		int delayResponse = 0;
 		try {
 			java.util.Optional<InsertEntity> op = proxyabis.findById(ire.getReferenceId());
 			if (!op.isEmpty()) {
@@ -119,31 +122,15 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 			List<BiometricData> lst = fetchCBEFF(ie);
 			if (null == lst || lst.size() == 0)
 				throw new RequestException(FailureReasonsConstants.INVALID_CBEFF_FORMAT);
-
-			for (BiometricData bdt : lst) {
-				Expectation exp = expectationCache.get(bdt.getBioData());
-				if(exp.getId() != null && !exp.getId().isEmpty() && exp.getActionToInterfere().equals("Insert")){
-					logger.info("Expectation found for " + exp.getId());
-					if(exp.getDelayInExecution() != null && !exp.getDelayInExecution().isEmpty()){
-						delayResponse = Integer.parseInt(exp.getDelayInExecution());
-					}
-					if(exp.getForcedResponse().equals("Error")){
-						throw new RequestException(exp.getErrorCode(), delayResponse);
-					}
-				}
-			}
 			ie.setBiometricList(lst);
 			proxyabis.save(ie);
-			return delayResponse;
+
 		} catch (CbeffException cbef) {
 			logger.error("CBEF error While inserting data " + cbef.getMessage());
-			throw new RequestException(cbef.getMessage(), delayResponse);
-		} catch(RequestException rex) {
-			rex.setDelayResponse(delayResponse);
-			throw rex;
+			throw new RequestException(cbef.getMessage());
 		} catch (Exception exp) {
 			logger.error("Error While inserting data " + exp.getMessage());
-			throw new RequestException(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN, delayResponse);
+			throw new RequestException(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
 		}
 
 	}
@@ -151,51 +138,46 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 	private List<BiometricData> fetchCBEFF(InsertEntity ie) throws Exception {
 		List<BiometricData> lst = new ArrayList();
 		try {
-			HttpHeaders headers1 = new HttpHeaders();
-			headers1.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+			HttpHeaders headers = new HttpHeaders();
+			headers.setContentType(MediaType.APPLICATION_JSON);
+			headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+			JSONObject jsonObject = new JSONObject();
+			jsonObject.put("id", env.getProperty("secret_url.id"));
+			jsonObject.put("metadata", new JSONObject());
+			JSONObject jsonObject1 = new JSONObject();
+			jsonObject1.put("clientId", env.getProperty("secret_url.clientnId"));
+			jsonObject1.put("secretKey", env.getProperty("secret_url.secretKey"));
+			jsonObject1.put("appId", env.getProperty("secret_url.appId"));
+			jsonObject.put("requesttime", env.getProperty("secret_url.requesttime"));
+			jsonObject.put("version", env.getProperty("secret_url.version"));
+			jsonObject.put("request", jsonObject1);
 
-			if(encryption) {
-				HttpHeaders headers = new HttpHeaders();
-				headers.setContentType(MediaType.APPLICATION_JSON);
-				headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
-				JSONObject jsonObject = new JSONObject();
-				jsonObject.put("id", env.getProperty("secret_url.id"));
-				jsonObject.put("metadata", new JSONObject());
-				JSONObject jsonObject1 = new JSONObject();
-				jsonObject1.put("clientId", env.getProperty("secret_url.clientnId"));
-				jsonObject1.put("secretKey", env.getProperty("secret_url.secretKey"));
-				jsonObject1.put("appId", env.getProperty("secret_url.appId"));
-				jsonObject.put("requesttime", env.getProperty("secret_url.requesttime"));
-				jsonObject.put("version", env.getProperty("secret_url.version"));
-				jsonObject.put("request", jsonObject1);
+			HttpEntity<String> entity = new HttpEntity<String>(jsonObject.toString(), headers);
+			HttpEntity<String> response = restTemplate.exchange(SECRET_URL, HttpMethod.POST, entity, String.class);
 
-				HttpEntity<String> entity = new HttpEntity<String>(jsonObject.toString(), headers);
-				HttpEntity<String> response = restTemplate.exchange(SECRET_URL, HttpMethod.POST, entity, String.class);
+			Object obj = JSONValue.parse(response.getBody());
 
-				Object obj = JSONValue.parse(response.getBody());
+			JSONObject jo1 = (JSONObject) ((JSONObject) obj).get("response");
+			HttpHeaders responseHeader = response.getHeaders();
+			if (!(jo1.get("status").toString().equalsIgnoreCase("Success"))) {
 
-				JSONObject jo1 = (JSONObject) ((JSONObject) obj).get("response");
-				HttpHeaders responseHeader = response.getHeaders();
-				if (!(jo1.get("status").toString().equalsIgnoreCase("Success"))) {
-
-					throw new Exception();
-				}
-				headers1.set("Cookie", "AUTHORIZATION" + responseHeader.get("Set-Cookie").get(0).toString().substring(0,
-						responseHeader.get("Set-Cookie").get(0).toString().indexOf(";")));
+				throw new Exception();
 			}
-			if (localDevelopment){
-				/* It will replace the host in referenceUrl with the mosip host */
-				CBEFF_URL = CBEFF_URL.replace("http://datashare-service", mosipHost);
-			}
+
 			logger.info("Fetching CBEFF for reference URL-" + CBEFF_URL);
+			HttpHeaders headers1 = new HttpHeaders();
+
+			headers1.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+			headers1.set("Cookie", "AUTHORIZATION" + responseHeader.get("Set-Cookie").get(0).toString().substring(0,
+					responseHeader.get("Set-Cookie").get(0).toString().indexOf(";")));
+
 			HttpEntity<String> entity1 = new HttpEntity<String>(headers1);
 			String cbeff = restTemplate.exchange(CBEFF_URL, HttpMethod.GET, entity1, String.class).getBody();
 
-			if(encryption) {
-				cbeff = cryptoUtil.decryptCbeff(cbeff);
-			}
-
-			BIRType birType = CbeffValidator.getBIRFromXML(IOUtils.toByteArray(cbeff));
+			String cbf=cryptoUtil.decryptCbeff(cbeff);
+			
+			//BIRType birType = CbeffValidator.getBIRFromXML(IOUtils.toByteArray(cbeff));
+			BIRType birType = CbeffValidator.getBIRFromXML(IOUtils.toByteArray(cbf));
 			logger.info("Validating CBEFF data");
 			if (CbeffValidator.validateXML(birType)) {
 				logger.info("Error while validating CBEFF");
@@ -213,6 +195,7 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 					bd.setSubtype(type.getBDBInfo().getSubtype().toString());
 				bd.setBioData(getSHA(new String(type.getBDB())));
 				bd.setInsertEntity(ie);
+
 				lst.add(bd);
 			}
 
@@ -261,11 +244,10 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 	}
 
 	@Override
-    public IdentifyDelayResponse findDuplication(IdentityRequest ir) {
-		int delayResponse = 0;
+	public IdentityResponse findDupication(IdentityRequest ir) {
 		try {
 			String refId = ir.getReferenceId();
-            logger.info("Checking for duplication of reference ID " + refId);
+			logger.info("Checking for dulication of reference ID " + refId);
 			List<BiometricData> lst = null;
 			if (null != ir.getGallery() && ir.getGallery().getReferenceIds().size() > 0
 					&& null != ir.getGallery().getReferenceIds().get(0).getReferenceId()
@@ -276,69 +258,36 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 				lst = proxyAbisBioDataRepository.fetchDuplicatesForReferenceIdBasedOnGalleryIds(refId, referenceIds);
 			} else {
 				logger.info("checking for duplication in entire DB of reference ID" + refId);
-                List<String> bioValue = proxyAbisBioDataRepository.fetchBiodata(refId);
-                if(!bioValue.isEmpty()){
-                    Expectation exp = expectationCache.get(bioValue.get(0));
-					if(exp.getId() != null && !exp.getId().isEmpty() && exp.getActionToInterfere().equals("Identify")){
-						logger.info("Expectation found for " + exp.getId());
-						if(exp.getDelayInExecution() != null && !exp.getDelayInExecution().isEmpty()){
-							delayResponse = Integer.parseInt(exp.getDelayInExecution());
+				if(hashes != null){
+					boolean showDuplicate = false;
+					lst = proxyAbisBioDataRepository.fetchBiometricsForReferenceId(refId);
+					if(lst.size() > 0){
+						for(BiometricData bdt: lst){
+							if (hashes.contains(bdt.getBioData())) {
+								showDuplicate = true;
+								break;
+							}
 						}
-						return new IdentifyDelayResponse(processExpectation(ir, exp), delayResponse);
+						logger.info("Show duplicate is " + showDuplicate+ "for refId "+refId);
+						if(!showDuplicate){
+							lst = new ArrayList<>();
+						}
+					} else {
+						logger.info("No biometrics found for " + refId);
 					}
-                }
-				if (findDuplicate) {
+				} else if (findDuplicate) {
 					lst = proxyAbisBioDataRepository.fetchDuplicatesForReferenceId(refId);
 				}
+				
 			}
-			if(lst != null)
-				logger.info("Number of duplicate candidates are " + lst.size());
-			return new IdentifyDelayResponse(constructIdentityResponse(ir, lst), delayResponse);
+			logger.info("Number of dulplicate candidates are " + lst.size());
+			return constructIdentityResponse(ir, lst);
 		} catch (Exception ex) {
 			throw ex;
+
 		}
 
 	}
-
-	/**
-	 * Constructs a identity response based on the expectaions that are set.
-	 * @param ir
-	 * @param expectation
-	 * @return
-	 */
-    private IdentityResponse processExpectation(IdentityRequest ir, Expectation expectation){
-		logger.info("processExpectation" + ir.getReferenceId());
-		IdentityResponse response = new IdentityResponse();
-		response.setId(ir.getId());
-		response.setRequestId(ir.getRequestId());
-		response.setResponsetime(ir.getRequesttime());
-
-		if(expectation.getForcedResponse().equals("Error")){
-			throw new RequestException(expectation.getErrorCode());
-		} else if(expectation.getForcedResponse().equals("Duplicate")) {
-			response.setReturnValue(1);
-			IdentityResponse.CandidateList cdl = new IdentityResponse.CandidateList();
-			cdl.setCandidates(new ArrayList<>());
-			List<Modalities> modalitiesList = new ArrayList<>();
-			modalitiesList.add(new Modalities("FACE", getAnalytics()));
-			modalitiesList.add(new Modalities("FINGER", getAnalytics()));
-			modalitiesList.add(new Modalities("IRIS", getAnalytics()));
-
-			if(expectation.getGallery() != null && expectation.getGallery().getReferenceIds().size() > 0){
-				for(Expectation.ReferenceIds rd: expectation.getGallery().getReferenceIds()){
-					List<String> refIds = proxyAbisBioDataRepository.fetchReferenceId(rd.getReferenceId());
-					if(refIds.size() > 0){
-						for(String refId: refIds){
-							cdl.getCandidates().add(new IdentityResponse.Candidates(refId, getAnalytics(), modalitiesList));
-						}
-					}
-				}
-				response.setCandidateList(cdl);
-				return response;
-			}
-		}
-		return constructIdentityResponse(ir, null);
-    }
 
 	private IdentityResponse constructIdentityResponse(IdentityRequest ir, List<BiometricData> lst) {
 		IdentityResponse response = new IdentityResponse();
@@ -437,25 +386,5 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 		return "Could not upload file";
 
 	}
-
-	public Boolean getDuplicate(){
-		return findDuplicate;
-	}
-	public void setDuplicate(Boolean d){
-		findDuplicate = d;
-	}
-
-	public Map<String, Expectation> getExpectations(){
-    	return expectationCache.get();
-	}
-
-	public void setExpectation(Expectation exp){
-		expectationCache.insert(exp);
-	}
-
-	public void deleteExpectation(String id){
-    	expectationCache.delete(id);
-	}
-
 
 }

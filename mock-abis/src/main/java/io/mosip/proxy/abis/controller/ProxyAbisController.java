@@ -1,9 +1,15 @@
 package io.mosip.proxy.abis.controller;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+
 import javax.validation.Valid;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import io.mosip.proxy.abis.Listener;
 import io.mosip.proxy.abis.entity.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,20 +17,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import io.mosip.proxy.abis.exception.BindingException;
 import io.mosip.proxy.abis.exception.FailureReasonsConstants;
 import io.mosip.proxy.abis.exception.RequestException;
 import io.mosip.proxy.abis.service.ProxyAbisInsertService;
+import io.mosip.proxy.abis.service.impl.ProxyAbisInsertServiceImpl;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
-
-import java.io.UnsupportedEncodingException;
-import java.util.Timer;
-import java.util.TimerTask;
-
 
 @CrossOrigin
 @RestController
@@ -37,11 +44,57 @@ public class ProxyAbisController {
 	@Autowired
 	ProxyAbisInsertService abisInsertService;
 
-	@Autowired
-	private Listener listener;
+	@RequestMapping(value = "hash", method = RequestMethod.GET)
+	@ApiOperation(value = "Get saved biometric hashes Request")
+	public ResponseEntity<Object> getHashes()
+			throws Exception {
+		logger.info("Get hashes Request");
+		try {
+			HashMap hm = new HashMap();
+			hm.put("hashes", ProxyAbisInsertServiceImpl.hashes);
+			return new ResponseEntity<Object>(hm, HttpStatus.OK);
+		} catch (RuntimeException exp) {
+			logger.error("Exception while getting hashes: "+exp.getMessage());
+			return new ResponseEntity<Object>("Failed to get hashes: "+exp.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
 
-	private Timer timer = new Timer();
+	@RequestMapping(value = "hash", method = RequestMethod.POST)
+	@ApiOperation(value = "Add Biometric hash Request")
+	public ResponseEntity<Object> addHashes(@Valid @RequestBody HashDto ie)
+			throws Exception {
+		logger.info("Add Hash Request");
+		try {
+			if(ProxyAbisInsertServiceImpl.hashes == null){
+				ProxyAbisInsertServiceImpl.hashes = new ArrayList();
+			}
+			if(ie.getHashes() != null){
+				ProxyAbisInsertServiceImpl.hashes.addAll(ie.getHashes());
+			}
 
+			logger.info("[Hash added]: "+ProxyAbisInsertServiceImpl.hashes.toString());
+			return new ResponseEntity<Object>("Successfully added hashes", HttpStatus.OK);
+		} catch (RuntimeException exp) {
+			logger.error("Exception in configure request: "+exp.getMessage());
+			return new ResponseEntity<Object>("Failed to add hashes: "+exp.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	@RequestMapping(value = "hash", method = RequestMethod.DELETE)
+	@ApiOperation(value = "Delete saved biometric hashes Request")
+	public ResponseEntity<Object> clearHashes()
+			throws Exception {
+		logger.info("Delete saved hashes Request");
+		try {
+			ProxyAbisInsertServiceImpl.hashes = null;
+			return new ResponseEntity<Object>("Successfully deleted hashes", HttpStatus.OK);
+		} catch (RuntimeException exp) {
+			logger.error("Exception while deleting hashes: "+exp.getMessage());
+			return new ResponseEntity<Object>("Failed to delete hashes: "+exp.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	
 	@RequestMapping(value = "insertrequest", method = RequestMethod.POST)
 	@ApiOperation(value = "Save Insert Request")
 	public ResponseEntity<Object> saveInsertRequest(@Valid @RequestBody InsertRequestMO ie, BindingResult bd)
@@ -54,7 +107,7 @@ public class ProxyAbisController {
 			throw new BindingException(re, bd);
 		}
 		try {
-			processInsertRequest(ie, 1);
+			return processInsertRequest(ie);
 		} catch (RequestException exp) {
 			logger.error("Exception while saving insert request");
 			RequestMO re = new RequestMO(ie.getId(), ie.getVersion(), ie.getRequestId(), ie.getRequesttime(),
@@ -64,19 +117,17 @@ public class ProxyAbisController {
 				exp.setReasonConstant(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
 			throw exp;
 		}
-		return new ResponseEntity<>("Success", HttpStatus.OK);
 	}
 
 	@RequestMapping(value = "deleterequest", method = RequestMethod.DELETE)
 	@ApiOperation(value = "Delete Request")
 	public ResponseEntity<Object> deleteRequest(@RequestBody RequestMO ie) {
 		try {
-			return processDeleteRequest(ie, 1);
+			return processDeleteRequest(ie);
 		} catch (RequestException exp) {
 			logger.error("Exception while deleting reference id");
 			exp.setEntity(ie);
-			if (null == exp.getReasonConstant())
-				exp.setReasonConstant(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
+			exp.setReasonConstant(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
 			throw exp;
 		}
 
@@ -103,21 +154,18 @@ public class ProxyAbisController {
 	@ApiOperation(value = "Checks duplication")
 	public ResponseEntity<Object> identityRequest(@RequestBody IdentityRequest ir) {
 		try {
-			return processIdentityRequest(ir, 1);
-		} catch (RequestException exp) {
+			return processIdentityRequest(ir);
+		} catch (Exception ex) {
 			logger.error("Error while finding duplicates for " + ir.getReferenceId());
 			RequestMO re = new RequestMO(ir.getId(), ir.getVersion(), ir.getRequestId(), ir.getRequesttime(),
 					ir.getReferenceId());
-			exp.setEntity(re);
-			if (null == exp.getReasonConstant())
-				exp.setReasonConstant(FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
-			throw exp;
+			throw new RequestException(re, FailureReasonsConstants.UNABLE_TO_FETCH_BIOMETRIC_DETAILS);
 		}
 	}
 
-	public ResponseEntity<Object> deleteRequestThroughListner(RequestMO ie, int msgType) {
+	public ResponseEntity<Object> deleteRequestThroughListner(RequestMO ie) {
 		try {
-			return processDeleteRequest(ie, msgType);
+			return processDeleteRequest(ie);
 		} catch (Exception ex) {
 			FailureResponse fr = new FailureResponse(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 2,
 					FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN);
@@ -125,19 +173,17 @@ public class ProxyAbisController {
 		}
 	}
 
-	private ResponseEntity<Object> processDeleteRequest(RequestMO ie, int msgType) {
+	private ResponseEntity<Object> processDeleteRequest(RequestMO ie) {
 		logger.info("Deleting request with reference id" + ie.getReferenceId());
 		abisInsertService.deleteData(ie.getReferenceId());
 		ResponseMO response = new ResponseMO(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 1);
 		logger.info("Successfully deleted reference id" + ie.getReferenceId());
-		ResponseEntity<Object> responseEntity = new ResponseEntity<Object>(response, HttpStatus.OK);
-		executeAsync(responseEntity, 0, msgType);
-		return responseEntity;
+		return new ResponseEntity<Object>(response, HttpStatus.OK);
 	}
 
-	public ResponseEntity<Object> identityRequestThroughListner(IdentityRequest ir, int msgType) {
+	public ResponseEntity<Object> identityRequestThroughListner(IdentityRequest ir) {
 		try {
-			return processIdentityRequest(ir, msgType);
+			return processIdentityRequest(ir);
 		} catch (Exception ex) {
 			FailureResponse fr = new FailureResponse(ir.getId(), ir.getRequestId(), ir.getRequesttime(), 2,
 					FailureReasonsConstants.UNABLE_TO_FETCH_BIOMETRIC_DETAILS);
@@ -145,64 +191,36 @@ public class ProxyAbisController {
 		}
 	}
 
-	private ResponseEntity<Object> processIdentityRequest(IdentityRequest ir, int msgType) {
+	private ResponseEntity<Object> processIdentityRequest(IdentityRequest ir) {
 		logger.info("Finding duplication for reference ID " + ir.getReferenceId());
-		int delayResponse = 0;
-		ResponseEntity<Object> responseEntity;
-		try {
-			IdentifyDelayResponse idr = abisInsertService.findDuplication(ir);
-			responseEntity = new ResponseEntity<Object>(idr.getIdentityResponse(), HttpStatus.OK);
-			delayResponse = idr.getDelayResponse();
-		} catch (RequestException exp) {
-			FailureResponse fr = new FailureResponse(ir.getId(), ir.getRequestId(), ir.getRequesttime(), 2,
-					null == exp.getReasonConstant() ? FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN
-							: exp.getReasonConstant().toString());
-			delayResponse = exp.getDelayResponse();
-			responseEntity = new ResponseEntity<Object>(fr, HttpStatus.NOT_ACCEPTABLE);
-		}
-		executeAsync(responseEntity, delayResponse, msgType);
-		return responseEntity;
+		IdentityResponse res = abisInsertService.findDupication(ir);
+		return new ResponseEntity<Object>(res, HttpStatus.OK);
 	}
 
-	public ResponseEntity<Object> saveInsertRequestThroughListner(InsertRequestMO ie, int msgType) {
+	public ResponseEntity<Object> saveInsertRequestThroughListner(InsertRequestMO ie) {
 		logger.info("Saving Insert Request");
 		String validate = validateRequest(ie);
 		if (null != validate) {
 			FailureResponse fr = new FailureResponse(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 2, validate);
 			return new ResponseEntity<Object>(fr, HttpStatus.NOT_ACCEPTABLE);
 		}
+
 		try {
-			return processInsertRequest(ie, msgType);
+			return processInsertRequest(ie);
 		} catch (RequestException exp) {
 			FailureResponse fr = new FailureResponse(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 2,
 					null == exp.getReasonConstant() ? FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN
 							: exp.getReasonConstant().toString());
 			return new ResponseEntity<Object>(fr, HttpStatus.NOT_ACCEPTABLE);
 		}
+
 	}
 
-	public ResponseEntity<Object> processInsertRequest(InsertRequestMO ie, int msgType) {
-		int delayResponse = 0;
-		ResponseEntity<Object> responseEntity;
-		try {
-			String validate = validateRequest(ie);
-			if (null != validate) {
-				FailureResponse fr = new FailureResponse(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 2, validate);
-				responseEntity = new ResponseEntity<Object>(fr, HttpStatus.NOT_ACCEPTABLE);
-			} else {
-				delayResponse = abisInsertService.insertData(ie);
-				ResponseMO responseMO = new ResponseMO(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 1);
-				responseEntity = new ResponseEntity<Object>(responseMO, HttpStatus.OK);
-			}
-		} catch (RequestException exp) {
-			FailureResponse fr = new FailureResponse(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 2,
-					null == exp.getReasonConstant() ? FailureReasonsConstants.INTERNAL_ERROR_UNKNOWN
-							: exp.getReasonConstant().toString());
-			delayResponse = exp.getDelayResponse();
-			responseEntity = new ResponseEntity<Object>(fr, HttpStatus.NOT_ACCEPTABLE);
-		}
-		executeAsync(responseEntity, delayResponse, msgType);
-		return responseEntity;
+	private ResponseEntity<Object> processInsertRequest(InsertRequestMO ie) {
+		abisInsertService.insertData(ie);
+		ResponseMO response = new ResponseMO(ie.getId(), ie.getRequestId(), ie.getRequesttime(), 1);
+		logger.info("Successfully inserted record ");
+		return new ResponseEntity<Object>(response, HttpStatus.OK);
 	}
 
 	private String validateRequest(InsertRequestMO ie) {
@@ -223,19 +241,4 @@ public class ProxyAbisController {
 
 	}
 
-	public void executeAsync(ResponseEntity<Object> finalResponseEntity, int delayResponse, int msgType){
-		TimerTask task = new TimerTask() {
-			public void run() {
-				try {
-					listener.sendToQueue(finalResponseEntity, msgType);
-					logger.info("Scheduled job completed: MsgType "+msgType);
-				} catch (JsonProcessingException | UnsupportedEncodingException e) {
-					logger.error(e.getMessage());
-					e.printStackTrace();
-				}
-			}
-		};
-		logger.info("Adding timed task with timer as "+delayResponse+" seconds");
-		timer.schedule(task, delayResponse*1000);
-	}
 }
