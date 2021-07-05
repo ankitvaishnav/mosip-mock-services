@@ -194,6 +194,7 @@ public class ProxyAbisInsertServiceImpl implements ProxyAbisInsertService {
 
 			if(encryption) {
 				cbeff = cryptoUtil.decryptCbeff(cbeff);
+				logger.info(cbeff);
 			}
 
 			BIRType birType = CbeffValidator.getBIRFromXML(IOUtils.toByteArray(cbeff));
